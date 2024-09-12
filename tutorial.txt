@@ -1,0 +1,249 @@
+Steps to create asp.net api
+
+1. ctrl+shift+p -> new pro -> ASP.NET core empty
+    this will create a empty skleton for api development
+    program.cs is similar to main.cs it has all routes and associated methods
+
+-------------------------------------------------------------------------
+
+    this is how to create a route and specify its task :
+
+    app.Map<Get/Post/Put/Delete>("<path/{variables}">, (<para arg type> <arg>, ...) => {
+        <your code here>
+    });
+
+-------------------------------------------------------------------------
+
+2. create a Dto (data transfer object) folder to store all dtos
+    dtos are object which we can share using api
+    it automatically maps json body to dto
+    dto is a record class file
+
+-------------------------------------------------------------------------
+
+    this is how a dto looks like
+
+    using namespace xxxxx.Dto;
+
+    public record class dtoName(
+        <datatype> <varName>,
+        ...
+    )
+
+-------------------------------------------------------------------------
+
+3. create a Endpoints folder to store different Endpoints
+    when numbers of Endpoints will increase, loc of program.cs will also increase, making it difficult to update and maintain
+    so create a static class for a group of Endpoints
+    make a method which can be used by app from program.cs to map this method
+
+-------------------------------------------------------------------------
+
+    this is how the static class looks like
+
+    using namespace xxxxx.Endpoints;
+
+    public static class GrpEndpoints{
+
+        public static WebApplication MapGrpEndpoints(this WebApplication app){
+
+            app.Map<Get/Post/Put/Delete>("<path/{variables}">, (<para arg type> <arg>, ...) => {
+                //type can also be dto
+                <your code here>
+            });
+            return app;
+        }
+
+    }
+
+-------------------------------------------------------------------------
+
+4. create Entities folder to store table schema
+    each class in Entities represents a table
+
+-------------------------------------------------------------------------
+
+    this is how a Entity looks like
+
+    using namespace xxxxx.Entities
+
+    public class tableName{
+        public <datatype> varName {get; set;}
+        //datatype can also be Entity
+    }
+
+-------------------------------------------------------------------------
+
+5. add Entity.Framework package for odbc / orm
+    dotnet add package Microsoft.EntityFrameworkCore.Sqlite
+    //here i added Sqlite
+
+6. create Data folder to store migration data and AppDbContext
+
+7. create AppDbContext
+    this class is used to store db schema
+
+-------------------------------------------------------------------------
+    this is how the AppDbContext looks like
+
+    using namespace xxxxx.Data
+
+    public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+    {
+        public DbSet<Entity> Entity(plural) => Set<Entity>();
+        
+        ...
+    }
+
+-------------------------------------------------------------------------
+
+8. connecting db
+
+-------------------------------------------------------------------------
+
+    store connection string securely in appsettings.json
+    appsettings.json ->
+    "ConnectionStrings": {
+        "<AppName>Db" : "Data Source=AppName.db"
+    }
+
+    add connection to db in program.cs
+    program.cs ->
+    var connectionString = builder.Configuration.GetConnectionString("<AppName>Db");
+    builder.Services.AddSqlite<AppDbContext>(connectionString);
+
+-------------------------------------------------------------------------
+
+9. install dotnet-ef tool for entity Framework 
+    dotnet tool install --global dotnet-ef --version 8.0.8
+
+10. install efcoreDesign package for migration
+    dotnet add package Microsoft.EntityFrameworkCore.Design --version 8.0.8
+
+11. migrate db
+    dotnet ef migrations add InitialCreate --output-dir Data/Migrations
+
+12. update db to convert code to db
+    dotnet ef database update 
+
+13. to programatically migrate instead of cli create DataExtensions.cs
+
+----------------------------------------------------------------------------
+
+    namespace xxxxx.Data;
+
+    public static class DataExtensions
+    {
+        public static void MigrateDb(this WebApplication app){
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            dbContext.Database.Migrate();
+        }
+    }
+
+    and in program.cs add this line before app.run();
+
+    app.MigrateDb();
+
+----------------------------------------------------------------------------
+
+14. data seeding to initially fill tables
+
+----------------------------------------------------------------------------
+
+    add following method to AppDbContext.cs
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<TableName>().HasData(
+            new {Id = x, Name = "y"},
+            ...
+        );
+    }
+
+----------------------------------------------------------------------------
+
+15. to add these entries to db
+    dotnet ef add Seed<TableName> --output-dir Data/Migrations
+
+16. insert to db
+
+----------------------------------------------------------------------------
+
+    app.MapPost("<path>", (Dto dto, AppDbContext dbContext) => {
+
+        Entity entity = new(){
+            Id = dto.Id,
+            ...
+            RefEntity = dbContext.EntityTwo.Find(dto.RefId); //if reference table
+        }
+
+        dbContext.Add(entity);
+        dbContext.SaveChanges();
+
+        return ....
+
+    });
+
+----------------------------------------------------------------------------
+
+17. update a record
+
+----------------------------------------------------------------------------
+
+    app.MapPost("<path>/{id}", (int id, Dto dto, AppDbContext dbContext) => {
+
+        Entity? entity = dbContext.Entity.Find(id);
+
+        entity.v1 = dto.v1;
+        ...
+
+        dbContext.SaveChanges();
+
+        return ....
+
+    });
+
+----------------------------------------------------------------------------
+
+18. get a specified record
+
+----------------------------------------------------------------------------
+
+    app.MapGet("<path>/{id}", (int id, AppDbContext dbContext) => {
+
+        Entity? entity = dbContext.Entity.Find(id);
+
+        Dto dto = new(
+            entity.v1,
+            ...
+        )
+
+        return <dto in specified format>
+
+    });
+
+----------------------------------------------------------------------------
+
+19. get all records
+
+----------------------------------------------------------------------------
+
+    app.MapGet("/games", (AppDbContext dbContext) => {
+        return dbContext.Entity.ToList();
+    });
+
+----------------------------------------------------------------------------
+
+20. delete a record
+
+----------------------------------------------------------------------------
+
+    app.MapDelete("<path>/{id}", (int id, AppDbContext dbContext) => {
+
+        dbContext.Entity.Where(entity => entity.Id == id).ExecuteDelete();
+        return ....
+
+    });
+
+----------------------------------------------------------------------------
